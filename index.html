@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diagnosi chiller</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2f7fd0"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#fff;--fg:#1c1c1a;--mut:#5f5e5a;--card:#f4f3ef;--ln:#d3d1c7;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1b19;--fg:#ecebe6;--mut:#a8a69e;--card:#262624;--ln:#44443f}}
+:root[data-theme="dark"]{--bg:#1b1b19;--fg:#ecebe6;--mut:#a8a69e;--card:#262624;--ln:#44443f}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:12px;max-width:720px;margin-inline:auto}
+h1{font-size:19px;margin:0 0 8px}h2{font-size:15px;margin:16px 0 6px}
+.row{display:flex;gap:8px;margin:6px 0}.row>*{flex:1}
+button,select,input{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:10px;min-width:0}
+button[aria-pressed="true"]{background:#2f7fd0;color:#fff;border-color:#2f7fd0}button.h[aria-pressed="true"]{background:#d9482f;border-color:#d9482f}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label{font-size:12px;color:var(--mut);display:block}label input{width:100%;box-sizing:border-box;margin-top:2px;font-size:16px}
+.k{font-size:11px;color:var(--mut)}
+.st{padding:12px;border-radius:12px;font-weight:700;margin:12px 0;color:#fff}
+.ok{background:#2f8a54}.w1{background:#c4710a}.w2{background:#c23b3a}.in{background:#5f5e5a}
+.f{background:var(--card);border-left:5px solid;border-radius:8px;padding:8px 10px;margin:8px 0}
+.f.l1{border-color:#c4710a}.f.l2{border-color:#c23b3a}.f.l0{border-color:#2f7fd0}
+.f b{display:block}.f span{display:block;margin-top:3px}.f em{font-style:normal;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px solid var(--ln);padding:5px;text-align:left}
+.tab{display:none}.tab.on{display:block}
+</style></head><body>
+<h1>Diagnosi rapida chiller Daikin</h1>
+<div class="row"><button id="bC" aria-pressed="true">❄ Raffreddamento</button><button id="bH" class="h" aria-pressed="false">🔥 Riscaldamento</button></div>
+<div class="row"><select id="ref"><option>R32</option><option>R410A</option><option>R454C</option></select><button id="ex">Esempio</button><button id="rs">Azzera</button></div>
+<div class="row"><button id="tD" aria-pressed="true">Diagnosi</button><button id="tG" aria-pressed="false">Guida</button></div>
+<div id="D" class="tab on">
+<div class="g" id="fm"></div>
+<p class="k">Pressioni in kPa come sull’HMI (relative). Compila almeno OAT, Evap Prs, Cond Prs, Suction e Discharge: i campi lasciati vuoti (Sat, SSH, DSH, rapporto, approach) vengono calcolati. LWT = temperatura acqua in uscita, facoltativa ma serve per l’approach lato acqua.</p>
+<div id="res"></div></div>
+<div id="G" class="tab"></div>
+<script>
+// Soglie indicative, modificabili. Non sono limiti Daikin: verifica su OM/IOM.
+const L={sLo:3,sHi:12,dLo:10,dHi:45,td:{R32:100,R410A:100,R454C:95},prW:4.5,prA:6,eH:{h:12,c:8},cH:{h:6,c:12},ex:90};
+// Antoine ln(P_ass,kPa)=A-B/T(K), stima ±2%. R454C: glide, nessuna correlazione.
+const K={R32:[15.539,2418.4],R410A:[15.492,2411.1],R454C:null};
+const F=[['oat','OAT aria esterna °C'],['lwt','LWT acqua uscita °C (opz.)'],['ewt','EWT acqua entrata °C (opz.)'],['cap','Capacity %'],['eprs','Evap Prs kPa'],['cprs','Cond Prs kPa'],['esat','Evap Sat Tmp °C'],['csat','Cond Sat Tmp °C'],['suc','Suction Tmp °C'],['dis','Discharge Tmp °C'],['ssh','SSH K'],['dsh','DSH K'],['pr','Pressure Ratio'],['eapp','Evap Approach K'],['capp','Cond Approach K'],['exv','EXV Position %'],['fan','Fans Speed %']];
+const GL=[['Capacity','Capacità richiesta: % di frequenza del compressore inverter.'],['Evap/Cond Prs','Pressioni lato bassa e alta (relative).'],['Evap/Cond Sat Tmp','Temperature di saturazione ricavate dalle pressioni.'],['Suction Tmp','Temperatura gas in aspirazione.'],['Discharge Tmp','Temperatura gas in mandata: stress termico.'],['SSH','Suction − Evap Sat: quanto è secco il gas; l’EXV lo insegue.'],['DSH','Discharge − Cond Sat: surriscaldamento in mandata.'],['Pressure Ratio','Cond Prs / Evap Prs (assolute).'],['Evap Approach','Raffr.: LWT − Evap Sat. Risc.: OAT − Evap Sat.'],['Cond Approach','Raffr.: Cond Sat − OAT. Risc.: Cond Sat − LWT.'],['EXV Position','Apertura valvola di espansione elettronica.'],['Fans Speed','Velocità ventilatori inverter.'],['Approach','Definizioni tipiche: confermale sull’OM.'],['ΔT acqua','Differenza tra EWT e LWT (in riscaldamento LWT − EWT): indica la portata d’acqua.'],['R454C','Miscela con glide: niente controllo pressione/saturazione automatico, inserisci tu le Sat.']];
+let mode='c';const $=i=>document.getElementById(i);
+$('fm').innerHTML=F.map(f=>`<label>${f[1]}<input id="${f[0]}" inputmode="decimal" autocomplete="off"></label>`).join('');
+$('G').innerHTML='<h2>Parametri</h2><table>'+GL.map(g=>`<tr><th>${g[0]}</th><td>${g[1]}</td></tr>`).join('')+'</table>';
+const v=i=>{const s=$(i).value.replace(',','.').trim();return s===''?NaN:parseFloat(s)};
+const n=x=>!isNaN(x),r1=x=>Math.round(x*10)/10;
+function run(){
+const h=mode==='h',rf=$('ref').value,k=K[rf],o=[];
+const add=(l,t,w,c)=>o.push([l,t,w,c]);
+const sp=p=>k&&n(p)?k[1]/(k[0]-Math.log(p+101.325))-273.15:NaN;
+const oat=v('oat'),lwt=v('lwt'),ewt=v('ewt'),exv=v('exv'),fan=v('fan'),cap=v('cap'),ep=v('eprs'),cp=v('cprs'),suc=v('suc'),dis=v('dis');
+let es=v('esat'),cs=v('csat');const eP=sp(ep),cP=sp(cp);
+if(n(es)&&n(eP)&&Math.abs(es-eP)>1.5)add(2,'Evap Sat non coerente con Evap Prs','Per '+rf+' la pressione corrisponde a circa '+r1(eP)+' °C, non a '+es+' °C.','Refrigerante selezionato (e impostato sull’unità), trasduttore di bassa pressione, valore trascritto.');
+if(n(cs)&&n(cP)&&Math.abs(cs-cP)>1.5)add(2,'Cond Sat non coerente con Cond Prs','Per '+rf+' la pressione corrisponde a circa '+r1(cP)+' °C, non a '+cs+' °C.','Refrigerante selezionato, trasduttore di alta pressione, valore trascritto.');
+const E=n(es)?es:eP,C=n(cs)?cs:cP;
+const sC=suc-E,dC=dis-C,pC=(cp+101.325)/(ep+101.325),eaC=h?oat-E:lwt-E,caC=h?C-lwt:C-oat;
+const chk=(nm,a,b,t,f)=>{if(n(a)&&n(b)&&Math.abs(a-b)>t)add(2,nm+' non coerente','Inserito '+a+', ma dalle altre letture risulta '+r1(b)+'.',f)};
+chk('SSH',v('ssh'),sC,2,'Letture fatte in momenti diversi, sonda aspirazione, trasduttore bassa.');
+chk('DSH',v('dsh'),dC,2.5,'Letture fatte in momenti diversi, sonda mandata, trasduttore alta.');
+chk('Pressure Ratio',v('pr'),pC,0.25,'Pressioni inserite relative o assolute, trasduttori.');
+chk('Evap Approach',v('eapp'),eaC,1.5,h?'OAT inserita, sonda aria esterna, Evap Sat.':'LWT inserita, sonda acqua, Evap Sat.');
+chk('Cond Approach',v('capp'),caC,1.5,h?'LWT inserita, sonda acqua, Cond Sat.':'OAT inserita, sonda aria esterna, Cond Sat.');
+const S=n(v('ssh'))?v('ssh'):sC,Dh=n(v('dsh'))?v('dsh'):dC,P=n(v('pr'))?v('pr'):pC,EA=n(v('eapp'))?v('eapp'):eaC,CA=n(v('capp'))?v('capp'):caC;
+if(n(S)){
+if(S<L.sLo)add(2,'SSH troppo basso ('+r1(S)+' K)','Il gas arriva quasi saturo al compressore: rischio ritorno di liquido.','Sonda aspirazione e trasduttore bassa, EXV aperta troppo o bloccata aperta, carico/portata troppo bassi.');
+else if(S>L.sHi){
+if(exv>L.ex)add(2,'SSH alto con EXV tutta aperta','La valvola non riesce a dare abbastanza refrigerante.','Carica insufficiente (cerca perdite), filtro/ostruzione sulla linea liquido, EXV che non apre davvero.');
+else if(exv<30)add(2,'SSH alto con EXV poco aperta','La valvola chiude ma il surriscaldamento resta alto.','Sonda aspirazione o pressione errate, EXV bloccata chiusa/non risponde, regolazione.');
+else add(1,'SSH sopra il normale ('+r1(S)+' K)','Surriscaldamento in aspirazione elevato.','Andamento nel tempo, confronto con l’altro circuito, apertura EXV.')}}
+if(n(Dh)){
+if(Dh<L.dLo)add(2,'DSH basso ('+r1(Dh)+' K)','Il gas in mandata è vicino alla saturazione: possibile liquido in compressione.','SSH, EXV, olio in eccesso, sonda mandata.');
+else if(Dh>L.dHi)add(1,'DSH alto ('+r1(Dh)+' K)','Gas molto surriscaldato in mandata.','Con SSH alto: carica bassa. Con SSH normale: condensazione alta (pulizia, flussi), sonda mandata.')}
+if(n(dis)&&dis>L.td[rf])add(2,'Discharge Tmp alta ('+dis+' °C)','Stress termico sul compressore.','Rapporto di compressione, SSH, condensazione, carica, olio. Non lasciar girare a lungo.');
+if(n(P)&&P>L.prW)add(P>L.prA?2:1,'Rapporto di compressione alto ('+r1(P)+')','Salto di pressione elevato: sale la mandata e cala il rendimento.','Quale pressione pesa: Cond Prs alta (sporco, flussi, incondensabili) o Evap Prs bassa (carica, filtro, flusso/aria).');
+const eh=n(EA)&&EA>L.eH[mode],ch=n(CA)&&CA>L.cH[mode];
+if(eh)add(1,'Evap Approach alto ('+r1(EA)+' K)',h?'Lato aria: l’evaporatore scambia poco con l’aria.':'Lato acqua: scambio povero nel BPHE.',h?'Batteria sporca o ghiacciata, ventilatori deboli/fermi, ostacoli, sbrinamento. Valuta il carico (Capacity).':'Portata acqua minima, filtro, BPHE sporco/olio, poca carica. Valuta il carico (Capacity).');
+if(ch)add(1,'Cond Approach alto ('+r1(CA)+' K)',h?'Lato acqua: il BPHE condensa con poco scambio.':'Lato aria: il condensatore scambia poco.',h?'Portata acqua, filtro a Y, BPHE incrostato, aria nel circuito, pompa.':'Batteria sporca, ventilatori, ricircolo aria calda, incondensabili/troppa carica.');
+if(n(fan)&&fan>=98&&((h&&eh)||(!h&&ch)))add(1,'Ventilatori al massimo con approach alto','La batteria è sotto sforzo.','Pulizia batteria, ricircolo, ostacoli al flusso.');
+if(!h&&n(E)&&E<1)add(2,'Evaporazione vicina al congelamento ('+r1(E)+' °C)','Rischio gelo nel BPHE.','Portata acqua, setpoint/glicole, filtro, sonde.');
+if(h&&n(E)&&E<0&&n(oat)&&oat>6)add(1,'Evaporazione sotto zero con aria non fredda','Possibile brina sulla batteria.','Batteria sporca/ostruita, ventilatori, carica, ciclo di sbrinamento.');
+if(n(exv)&&exv>L.ex)add(1,'EXV quasi tutta aperta','Valvola al limite di portata.','SSH, carica, filtro liquido.');
+if(n(exv)&&exv<5&&n(cap)&&cap>20)add(1,'EXV quasi chiusa con compressore in carico','Portata minima al carico richiesto.','SSH, sonda aspirazione, EXV.');
+const dw=h?lwt-ewt:ewt-lwt;
+if(n(dw)){if(dw<-0.5)add(2,'ΔT acqua al contrario ('+r1(dw)+' K)','In '+(h?'riscaldamento la mandata dovrebbe essere più calda dell’ingresso.':'raffreddamento la mandata dovrebbe essere più fredda dell’ingresso.'),'Modalità selezionata, sonde EWT/LWT scambiate, senso di flusso, valori trascritti.');else if(dw>7)add(1,'ΔT acqua alto ('+r1(dw)+' K)','Poca acqua per la potenza scambiata.','Portata (pompa, velocità, valvole), filtro a Y intasato, aria nel circuito.');else if(dw<2&&n(cap)&&cap>50)add(1,'ΔT acqua basso con carico alto','Portata elevata o sonde poco affidabili.','Portata effettiva, taratura sonde EWT/LWT, valore trascritto.')}
+const need=!(n(oat)&&n(ep)&&n(cp)&&n(suc)&&n(dis));
+if(!n(E)||!n(C))add(0,'Sat non calcolabile'+(rf==='R454C'?' (R454C, glide)':''),'Inserisci Evap/Cond Sat Tmp per calcolare SSH, DSH e approach.','');
+const mx=o.reduce((a,x)=>Math.max(a,x[0]),0);
+const hd=need?['in','Inserisci i dati minimi (OAT, pressioni, Suction, Discharge)']:mx>=2?['w2','Anomalia: ci sono valori incoerenti o fuori norma']:mx==1?['w1','Da verificare: alcuni valori meritano attenzione']:['ok','Nessuna incoerenza rilevata con le soglie indicative'];
+const der=[['Evap Sat',E,'°C'],['Cond Sat',C,'°C'],['SSH',sC,'K'],['DSH',dC,'K'],['Rapporto',pC,''],['Evap Approach',eaC,'K'],['Cond Approach',caC,'K'],['ΔT acqua',dw,'K']].map(d=>`<tr><td>${d[0]}</td><td>${n(d[1])?r1(d[1])+' '+d[2]:'—'}</td></tr>`).join('');
+$('res').innerHTML=`<div class="st ${hd[0]}">${hd[1]}</div>`+o.sort((a,b)=>b[0]-a[0]).map(x=>`<div class="f l${x[0]}"><b>${x[1]}</b><span>${x[2]}</span>${x[3]?`<span><em>Controlla:</em> ${x[3]}</span>`:''}</div>`).join('')+`<h2>Valori calcolati</h2><table>${der}</table>`;
+try{localStorage.setItem('dc2',JSON.stringify({mode,rf,d:F.map(f=>$(f[0]).value)}))}catch(e){}}
+function setM(m){mode=m;$('bC').setAttribute('aria-pressed',m=='c');$('bH').setAttribute('aria-pressed',m=='h');run()}
+function tab(g){$('D').classList.toggle('on',!g);$('G').classList.toggle('on',g);$('tD').setAttribute('aria-pressed',!g);$('tG').setAttribute('aria-pressed',g)}
+$('bC').onclick=()=>setM('c');$('bH').onclick=()=>setM('h');$('ref').onchange=run;$('tD').onclick=()=>tab(false);$('tG').onclick=()=>tab(true);
+document.querySelectorAll('#fm input').forEach(i=>i.oninput=run);
+$('rs').onclick=()=>{F.forEach(f=>$(f[0]).value='');run()};
+$('ex').onclick=()=>{setM('h');$('ref').value='R32';const x={oat:12.8,lwt:36,cap:50,exv:40,fan:75,eprs:797,cprs:2316.4,esat:3.1,csat:39,suc:12,dis:64.8,ssh:8.1,dsh:26.3,pr:2.64,eapp:9.7,capp:3};for(const i in x)$(i).value=x[i];run()};
+try{const s=JSON.parse(localStorage.getItem('dc2'));if(s){$('ref').value=s.rf;F.forEach((f,i)=>$(f[0]).value=s.d[i]||'');mode=s.mode}}catch(e){}
+setM(mode);
+if('serviceWorker'in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script></body></html>
