@@ -21,17 +21,29 @@ label{font-size:12px;color:var(--mut);display:block}label input{width:100%;box-s
 .f.l1{border-color:#c4710a}.f.l2{border-color:#c23b3a}.f.l0{border-color:#2f7fd0}
 .f b{display:block}.f span{display:block;margin-top:3px}.f em{font-style:normal;color:var(--mut)}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px solid var(--ln);padding:5px;text-align:left}
+.pn{display:none;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:10px;margin:10px 0}.pn label{margin:6px 0}
 .tab{display:none}.tab.on{display:block}
 </style></head><body>
 <h1>Diagnosi rapida chiller Daikin</h1>
 <div class="row"><button id="bC" aria-pressed="true">❄ Raffreddamento</button><button id="bH" class="h" aria-pressed="false">🔥 Riscaldamento</button></div>
 <div class="row"><select id="ref"><option>R32</option><option>R410A</option><option>R454C</option></select><button id="ex">Esempio</button><button id="rs">Azzera</button></div>
-<div class="row"><button id="tD" aria-pressed="true">Diagnosi</button><button id="tG" aria-pressed="false">Guida</button></div>
+<div class="row"><button id="tD" aria-pressed="true">Diagnosi</button><button id="tA" aria-pressed="false">Archivio</button><button id="tG" aria-pressed="false">Guida</button></div>
 <div id="D" class="tab on">
 <div class="g" id="fm"></div>
 <p class="k">Pressioni in kPa come sull’HMI (relative). Compila almeno OAT, Evap Prs, Cond Prs, Suction e Discharge: i campi lasciati vuoti (Sat, SSH, DSH, rapporto, approach) vengono calcolati. LWT = temperatura acqua in uscita, facoltativa ma serve per l’approach lato acqua.</p>
+<div class="row"><button id="sb">💾 Salva</button></div><p class="k" id="exn"></p>
+<div id="sp" class="pn"><b>Salva rilevazione</b>
+<label>Data<input id="sDate" type="date"></label><label>Ora<input id="sTime" type="time"></label>
+<label>Cliente<input id="sCli"></label><label>Indirizzo<input id="sAddr"></label>
+<label>Modello macchina<input id="sMod"></label><label>Matricola<input id="sSer"></label>
+<label>Refrigerante<select id="sRef" style="width:100%"><option>R32</option><option>R410A</option><option>R454C</option></select></label>
+<div class="row"><button id="sOk">Salva</button><button id="sNo">Annulla</button></div></div>
 <div id="res"></div></div>
+<div id="A" class="tab"><input id="aq" placeholder="Cerca cliente, indirizzo, modello, matricola" style="width:100%;box-sizing:border-box;margin:6px 0"><div id="al"></div>
+<div class="row"><button id="aEx">Esporta backup</button><button id="aImB">Importa backup</button></div><input id="aIm" type="file" accept=".json,application/json" hidden>
+<p class="k">I salvataggi restano solo su questo telefono, nel browser. Se cancelli i dati di Chrome si perdono: esporta ogni tanto un backup. Il file contiene i dati dei clienti, trattalo con cura.</p></div>
 <div id="G" class="tab"></div>
+<p class="k" style="text-align:center;margin-top:18px">App v3 · salvataggio e archivio attivi</p>
 <script>
 // Soglie indicative, modificabili. Non sono limiti Daikin: verifica su OM/IOM.
 const L={sLo:3,sHi:12,dLo:10,dHi:45,td:{R32:100,R410A:100,R454C:95},prW:4.5,prA:6,eH:{h:12,c:8},cH:{h:6,c:12},ex:90};
@@ -90,11 +102,24 @@ const der=[['Evap Sat',E,'°C'],['Cond Sat',C,'°C'],['SSH',sC,'K'],['DSH',dC,'K
 $('res').innerHTML=`<div class="st ${hd[0]}">${hd[1]}</div>`+o.sort((a,b)=>b[0]-a[0]).map(x=>`<div class="f l${x[0]}"><b>${x[1]}</b><span>${x[2]}</span>${x[3]?`<span><em>Controlla:</em> ${x[3]}</span>`:''}</div>`).join('')+`<h2>Valori calcolati</h2><table>${der}</table>`;
 try{localStorage.setItem('dc2',JSON.stringify({mode,rf,d:F.map(f=>$(f[0]).value)}))}catch(e){}}
 function setM(m){mode=m;$('bC').setAttribute('aria-pressed',m=='c');$('bH').setAttribute('aria-pressed',m=='h');run()}
-function tab(g){$('D').classList.toggle('on',!g);$('G').classList.toggle('on',g);$('tD').setAttribute('aria-pressed',!g);$('tG').setAttribute('aria-pressed',g)}
-$('bC').onclick=()=>setM('c');$('bH').onclick=()=>setM('h');$('ref').onchange=run;$('tD').onclick=()=>tab(false);$('tG').onclick=()=>tab(true);
+function tab(x){['D','G','A'].forEach(i=>{$(i).classList.toggle('on',i==x);$('t'+i).setAttribute('aria-pressed',i==x)});if(x=='A')arch()}
+$('bC').onclick=()=>setM('c');$('bH').onclick=()=>setM('h');$('ref').onchange=run;$('tD').onclick=()=>tab('D');$('tG').onclick=()=>tab('G');$('tA').onclick=()=>tab('A');
 document.querySelectorAll('#fm input').forEach(i=>i.oninput=run);
 $('rs').onclick=()=>{F.forEach(f=>$(f[0]).value='');run()};
-$('ex').onclick=()=>{setM('h');$('ref').value='R32';const x={oat:12.8,lwt:36,cap:50,exv:40,fan:75,eprs:797,cprs:2316.4,esat:3.1,csat:39,suc:12,dis:64.8,ssh:8.1,dsh:26.3,pr:2.64,eapp:9.7,capp:3};for(const i in x)$(i).value=x[i];run()};
+const BI=()=>{F.forEach(f=>$(f[0]).value='');setM('h');$('ref').value='R32';$('exn').textContent='Esempio predefinito (archivio vuoto)';const x={oat:12.8,lwt:36,cap:50,exv:40,fan:75,eprs:797,cprs:2316.4,esat:3.1,csat:39,suc:12,dis:64.8,ssh:8.1,dsh:26.3,pr:2.64,eapp:9.7,capp:3};for(const i in x)$(i).value=x[i];run()};
+const AK='dcArch',ld=()=>{try{return JSON.parse(localStorage.getItem(AK))||[]}catch(e){return[]}},sv=a=>{try{localStorage.setItem(AK,JSON.stringify(a));return true}catch(e){return false}};
+const esc=t=>String(t||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));let last=0;
+function load(r){F.forEach(f=>$(f[0]).value=(r.d&&r.d[f[0]])||'');$('ref').value=r.rf;setM(r.mode)}
+$('ex').onclick=()=>{const a=ld();if(!a.length){BI();return}let r;do{r=a[Math.floor(Math.random()*a.length)]}while(a.length>1&&r.id===last);last=r.id;load(r);$('exn').textContent='Esempio dall’archivio: '+(r.mod||'modello n.d.')+' · '+r.date+' '+r.time};
+$('sb').onclick=()=>{const d=new Date(),p=x=>String(x).padStart(2,'0');$('sDate').value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());$('sTime').value=p(d.getHours())+':'+p(d.getMinutes());$('sRef').value=$('ref').value;$('sp').style.display='block';$('sp').scrollIntoView()};
+$('sNo').onclick=()=>$('sp').style.display='none';
+$('sOk').onclick=()=>{const rc={id:Date.now(),date:$('sDate').value,time:$('sTime').value,cli:$('sCli').value.trim(),addr:$('sAddr').value.trim(),mod:$('sMod').value.trim(),ser:$('sSer').value.trim(),rf:$('sRef').value,mode,d:Object.fromEntries(F.map(f=>[f[0],$(f[0]).value])),esito:document.querySelector('#res .st').textContent},a=ld();a.push(rc);if(sv(a)){$('sp').style.display='none';['sCli','sAddr','sMod','sSer'].forEach(i=>$(i).value='');alert('Rilevazione salvata in archivio')}else alert('Salvataggio non riuscito: memoria del browser non disponibile.')};
+function arch(){const q=$('aq').value.toLowerCase(),a=ld().filter(r=>(r.cli+r.addr+r.mod+r.ser).toLowerCase().includes(q)).sort((x,y)=>y.id-x.id);$('al').innerHTML=a.length?a.map(r=>`<div class="f l0"><b>${esc(r.date)} ${esc(r.time)} · ${esc(r.cli)||'—'}</b><span>${esc(r.addr)}</span><span>${esc(r.mod)} · matr. ${esc(r.ser)}</span><span>${esc(r.rf)} · ${r.mode=='h'?'Riscaldamento':'Raffreddamento'}</span><span><em>${esc(r.esito)}</em></span><div class="row"><button data-a="r" data-i="${r.id}">Richiama</button><button data-a="d" data-i="${r.id}">Elimina</button></div></div>`).join(''):'<p class="k">Nessun salvataggio.</p>'}
+$('aq').oninput=arch;
+$('al').onclick=e=>{const b=e.target.closest('button');if(!b)return;const id=+b.dataset.i,a=ld();if(b.dataset.a=='r'){const r=a.find(x=>x.id===id);if(r){load(r);$('exn').textContent='Richiamato: '+r.date+' '+r.time;tab('D')}}else if(confirm('Eliminare questo salvataggio?')){sv(a.filter(x=>x.id!==id));arch()}};
+$('aEx').onclick=()=>{const u=URL.createObjectURL(new Blob([JSON.stringify(ld())],{type:'application/json'})),l=document.createElement('a');l.href=u;l.download='archivio-chiller.json';l.click();setTimeout(()=>URL.revokeObjectURL(u),2000)};
+$('aImB').onclick=()=>$('aIm').click();
+$('aIm').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const n=JSON.parse(t),a=ld(),ids=new Set(a.map(x=>x.id));n.forEach(x=>{if(x&&x.id&&!ids.has(x.id))a.push(x)});sv(a);arch()}catch(er){alert('File non valido')}})};
 try{const s=JSON.parse(localStorage.getItem('dc2'));if(s){$('ref').value=s.rf;F.forEach((f,i)=>$(f[0]).value=s.d[i]||'');mode=s.mode}}catch(e){}
 setM(mode);
 if('serviceWorker'in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
